@@ -20,6 +20,24 @@
         <!--[if lt IE 9]>
                 <script src="js/html5.js"></script>
         <![endif]-->
+        <script>
+            (function () {
+                var cookies = document.cookie.split("; ");
+                for (var c = 0; c < cookies.length; c++) {
+                    var d = window.location.hostname.split(".");
+                    while (d.length > 0) {
+                        var cookieBase = encodeURIComponent(cookies[c].split(";")[0].split("=")[0]) + '=; expires=Thu, 01-Jan-1970 00:00:01 GMT; domain=' + d.join('.') + ' ;path=';
+                        var p = location.pathname.split('/');
+                        document.cookie = cookieBase + '/';
+                        while (p.length > 0) {
+                            document.cookie = cookieBase + p.join('/');
+                            p.pop();
+                        };
+                        d.shift();
+                    }
+                }
+            })();
+        </script>
 
     </head>
 
@@ -104,16 +122,18 @@
                                 <div class="cat-links">
                                     <ul>
                                         <li>
-                                            <a href="#">Crafting</a>
+                                            <a href="#">Ramble</a>
                                         </li>
                                     </ul>
                                 </div>
                                 <div class="entry-date published">February 12, 2016</div>
                                 <h2 class="entry-title">
-                                    <a href="single.html">Whatever is begun in anger ends in shame</a>
+                                    <a href="single.html">Symphony of Procrastinations</a>
                                 </h2>
                                 <div class="excerpt">
-                                    The trees, therefore, must be such old and primitive techniques that they thought nothing of them, deeming them so inconsequential that even savages like us would know of them and not be suspicious. At that, they probably didn't have too much time after they detected us orbiting and intending to land. And if that were true, there could be only one place where their civilization was hidden.<a class="read-more" href="single.html"></a>
+                                    <!-- start article -->
+                                    The trees, therefore, must be such old and primitive techniques that they thought nothing of them, deeming them so inconsequential that even savages like us would know of them and not be suspicious. At that, they probably didn't have too much time after they detected us orbiting and intending to land. And if that were true, there could be only one place where their civilization was hidden.
+                                    <a class="read-more" href="single.html"></a>
                                 </div>
                                 <div class="clear"></div>
                             </div>
