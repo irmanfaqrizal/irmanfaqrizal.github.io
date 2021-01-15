@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<style type="text/css" media="screen, print">
+			body  { margin: 10px 50px; font-family: sans-serif; text-align: center;}
+			line, polyline, path { stroke: black; fill: none; }
+            div.tooltip {	
+				position: absolute;			
+				text-align: center;			
+				width: 1000px;					
+				height: 22px;					
+				padding: 4px;			
+				font: 15px sans-serif;		
+				border-style: solid;		
+				border-radius: 8px;			
+				pointer-events: none;
+                margin-top: 10px;		
+			}
+		</style>
+		<title>The Distribution of CO2 Emissions</title>
+	</head>
+	<body>
+        <button onclick="window.location.reload()" style="float: left; border-radius: 10px; padding: 4px;">Refresh</button>
+		<h3 style="text-align: center;">The Distribution of CO<sub>2</sub> Emissions Among the Houses and its Evolution Over Time</h3>
+        <div id="topchart"></div>
+        <div id="bottomchart"></div>
+		<script src="../vendor/d3/d3.js"></script>
+		<script>
+
+var parse_time = d3.timeParse("%Y-%m-%d");
+var format_percent = d3.format('.0%');
+var margin = {top: 50, right: 100, bottom: 80, left: 100},
+    width = 1200 - margin.left - margin.right,
+    height = 320 - margin.top - margin.bottom;
+
+//// PARAMETERS FOR BOTTOM CHART
+var x = d3.scaleBand()
+    .rangeRound([0, width])
+    .padding(0.1);
+
+var y = d3.scaleLinear()
+    .range([height, 0]);
+
+var svg = d3.select('#bottomchart').append('svg')
+    .attr('width', width + margin.left + margin.right)
+    .attr('height', height + margin.top + margin.bottom).append('g')
+    .attr('transform', `translate(${margin.left},${margin.top})`);
+//// END
+
+//// PARAMETERS FOR TOP CHART
+var divtooltip = d3.select("body").append("div")	
+    .attr("class", "tooltip")				
+    .style("opacity", 0);
+var xt = d3.scaleLinear()
+    .range([0, width]);
+
+var yt = d3.scaleLinear()
+    .range([height, 0]);
+
+var svgt = d3.select('#topchart').append('svg')
+    .attr('width', width + margin.left + margin.right)
+    .attr('height', height + margin.top + margin.bottom).append('g')
+    .attr('transform', `translate(${margin.left},${margin.top})`);
+//// END
+
+Promise.all([
+    //import the data
+	d3.tsv("../data/missions.tsv", d => ({
+		mission_id: +d['#mission_id'],
+		user_id:    +d.user_id,
+		place_id:   +d.place_id,
+		date:        parse_time(d.date),
+		duration:   +d.duration,
+		mode:        d.mode,
+        co2:        +d.co2,
+        year:       parse_time(d.date).getFullYear(), //for top chart
+	})),
+	d3.tsv("../data/users.tsv", d => ({
+		user_id:    +d['#user_id'],
+		name:        d.name,
+		house:       d.house,
+		institution: d.institution,
+	})),
+	d3.tsv("../data/places.tsv", d => ({
+		place_id:  +d['#place_id'],
+		distance:  +d.distance,
+		country:    d.country,
+	})),
+	d3.tsv("../data/countries.tsv", d => ({
+		alpha:     d['#alpha2'],
+		country:   d.country,
+		continent: d.continent,
+	})),
+]).then(function(data) {
+    // transform into objects and set keys
+	let missions  = data[0];
+	let users     = Object.fromEntries(data[1].map(u => [u.user_id, u]));
+	let places    = Object.fromEntries(data[2].map(p => [p.place_id, p]));
+	let countries = Object.fromEntries(data[3].map(c => [c.alpha, c]));
+    
+    //// START OF HOUSE VISUALIZATION (BOTTOM CHART) ////
+	// emissions per house
+    let houses = Object.fromEntries(data[1].map(u => [u.house, 0]));
+    for(let mission of missions) {
+        houses[users[mission.user_id].house] += mission.co2 * places[mission.place_id].distance / 1000;
+    }
+    
+    // transformation into d3 data structure 
+    let houseData = new Array();
+    for (let i = 0; i < Object.keys(houses).length; i++) {
+        houseData.push({houseName :  Object.keys(houses)[i], houseEmissions :  Object.values(houses)[i]});
+    }
+
+    // sort descending order
+    houseData.sort(function(a,b) {
+        return b.houseEmissions - a.houseEmissions;
+    });
+
+    // set the axis then draw svg
+	x.domain(houseData.map(function(d) { return d.houseName; }));
+    y.domain([0, d3.max(houseData, function(d) { return d.houseEmissions; })]);
+    let xAxis = d3.axisBottom(x);
+    let yAxis = d3.axisLeft(y);
+    
+    svg.append("g")
+      .attr("class", "x axis")
+      .attr("transform", "translate(0," + height + ")")
+      .call(xAxis)
+    .selectAll("text")
+      .style("text-anchor", "end")
+      .style("font-size", "11px")
+      .attr("dx", "-.8em")
+      .attr("dy", "-.55em")
+      .attr("transform", "rotate(-60)" );
+
+    svg.append("text")
+        .attr("class", "x label")
+        .attr("text-anchor", "end")
+        .attr("x", width / 2)
+        .attr("y", height + 80)
+        .text("Houses");
+
+    svg.append("g")
+        .attr("class", "y axis")
+        .call(yAxis)
+        .append("text")
+        .attr("transform", "rotate(-90)")
+        .attr("y", 6)
+        .attr("dy", "-3.0em")
+        .attr("dx", "-4.0em")
+        .style("text-anchor", "end")
+        .text("C02 Emissions").style("fill", "black").style("font-size", "13px");
+    
+    
+    var toggleColor = (function(d){
+        var toggleClickCount = Object.fromEntries(data[1].map(u => [u.house, ""]));
+        var colors = ["midnightblue", "darkgreen", "red", "lime"];
+        return function(d, i){
+            let count = 0;
+            for(let toggle of Object.values(toggleClickCount)) { 
+                if (toggle == 1) {count++}
+            }
+
+            if (toggleClickCount[i.houseName] == 1) {  }
+            else if (count > 3)  {
+                alert("Limit Reached");
+            } else {
+                toggleClickCount[i.houseName] = 1;
+                d3.select(this).style("fill", colors[count]);
+
+                let years = Object.fromEntries(missions.map(y => [y.year, 0]));
+                for(let mission of missions) {
+                    if(users[mission.user_id].house == i.houseName) {
+                        years[mission.year] += mission.co2 * places[mission.place_id].distance / 1000;
+                    }
+                }
+
+                // transformation into d3 data structure 
+                let yearlyData = new Array();
+                var popup = i.houseName + " => ";
+                for (let i = 0; i < Object.keys(years).length; i++) {
+                    yearlyData.push({year :  Object.keys(years)[i], yearlyEmissions :  Object.values(years)[i]});
+                    popup += "("+Object.keys(years)[i] + "=" + parseFloat(Object.values(years)[i]).toFixed(3)+"), ";
+                }
+                
+                let [u0, u1] = [Object.keys(years)[0], Object.keys(years)[Object.keys(years).length-1]];
+                let [t0, t1] = [0, 18];
+                xt.domain([u0, u1]);
+                yt.domain([t0, t1]);
+                
+                let cdf = d3.line()
+                    .x((d, i) => xt(i))
+                    .y((d, i) => yt(d));
+
+                let line = svgt.append('path').datum(yearlyData)
+                    .attr("transform", "translate(20,0)")
+                    .style("fill", "none")
+                    .style("stroke", colors[count])
+                    .attr("stroke-width", 2)
+                    .attr("d", d3.line()
+                        .x(function(d) { return xt(d.year) })
+                        .y(function(d) { return yt(d.yearlyEmissions) })
+                        )
+                    .on("mouseover", function() { 
+                        d3.select(this).attr("stroke-width", 3.5);
+                        divtooltip.transition()		
+                            .duration(200)		
+                            .style("opacity", .9);
+                        divtooltip.html(popup)
+                            .style("left", "20%")		
+                            .style("top", "40px")
+                            .style("background", "lightgrey")
+                            .style("border-color", colors[count]);
+                    })
+		            .on("mouseout", function() {
+                        d3.select(this).attr("stroke-width", 2);
+                        divtooltip.transition()		
+                            .duration(500)		
+                            .style("opacity", 0);
+                    });
+            }
+            
+        }
+    })();
+
+    svg.selectAll(".bar")
+        .data(houseData)
+        .enter()
+        .append("g")
+        .attr("class", "bar")
+        .append("rect").style("stroke", "black").attr("stroke-width", 0.8)
+        .style("fill", "lightgrey").on("click", toggleColor)
+        .attr("x", function(d) { return x(d.houseName); })
+        .attr("width", x.bandwidth())
+        .attr("y", function(d) { return y(d.houseEmissions); })
+        .attr("height", function(d) { return height - y(d.houseEmissions); })
+        .on("mouseover", function() { d3.select(this).attr("stroke-width", 2);})
+		.on("mouseout", function() { d3.select(this).attr("stroke-width", 0.8);})
+        .append("svg:title")
+        .text(function(d) { return d.houseName + " : " + parseFloat(d.houseEmissions).toFixed(3); }); //tooltip
+    //// END OF HOUSE VISUALIZATION ////
+
+    //// START OF TOP CHART ////
+    // emissions per year
+    let years = Object.fromEntries(missions.map(y => [y.year, 0]));
+    let [u0, u1] = [Object.keys(years)[0], Object.keys(years)[Object.keys(years).length-1]];
+	let [t0, t1] = [0, 18];
+    xt.domain([u0, u1]);
+	yt.domain([t0, t1]);
+    
+    let xAxist = d3.axisBottom(xt).ticks(Object.keys(years).length)
+        .tickFormat(function(d,i){ return d }); //Format to string
+	svgt.append('g')
+        .attr("transform", "translate(20," + height + ")")
+		.call(xAxist);
+    
+    svgt.append("text")
+        .attr("class", "x label")
+        .attr("text-anchor", "end")
+        .attr("x", width / 2)
+        .attr("y", height + 50)
+        .text("Years");
+        
+	let yAxist = d3.axisLeft(yt);   
+	svgt.append('g')
+		.call(yAxist).append("text")
+        .attr("transform", "rotate(-90)")
+        .attr("y", 6)
+        .attr("dy", "-3.0em")
+        .attr("dx", "-4.0em")
+        .style("text-anchor", "end")
+        .text("C02 Emissions").style("fill", "black").style("font-size", "13px");
+    //// END OF TOP CHART ////
+});
+		</script>
+	</body>
+</html>

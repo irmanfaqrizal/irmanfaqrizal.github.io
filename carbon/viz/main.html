@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<meta charset="utf-8">
+		<style type="text/css" media="screen, print">
+			body  { margin: 30px 50px; font-family: sans-serif; }
+			line, polyline, path { stroke: black; fill: none; }
+		</style>
+		<title>The Distribution of CO2 Emissions Among the Houses</title>
+	</head>
+	<body>
+		<h1>The Distribution of CO<sub>2</sub> Emissions Among the Houses</h1>
+
+		<script src="../vendor/d3/d3.js"></script>
+		<script>
+
+var parse_time = d3.timeParse("%Y-%m-%d");
+var format_percent = d3.format('.0%');
+
+var body = d3.select("body");
+var margin = {top: 100, right: 100, bottom: 100, left: 100},
+    width = 1200 - margin.left - margin.right,
+    height = 600 - margin.top - margin.bottom;
+
+var x = d3.scaleBand()
+    .rangeRound([0, width])
+    .padding(0.1);
+
+var y = d3.scaleLinear()
+    .range([height, 0]);
+
+var svg = d3.select('body').append('svg')
+    .attr('width', width + margin.left + margin.right)
+    .attr('height', height + margin.top + margin.bottom)
+  .append('g')
+    .attr('transform', `translate(${margin.left},${margin.top})`);
+
+Promise.all([
+    //import the data
+	d3.tsv("../data/missions.tsv", d => ({
+		mission_id: +d['#mission_id'],
+		user_id:    +d.user_id,
+		place_id:   +d.place_id,
+		date:        parse_time(d.date),
+		duration:   +d.duration,
+		mode:        d.mode,
+		co2:        +d.co2,
+	})),
+	d3.tsv("../data/users.tsv", d => ({
+		user_id:    +d['#user_id'],
+		name:        d.name,
+		house:       d.house,
+		institution: d.institution,
+	})),
+	d3.tsv("../data/places.tsv", d => ({
+		place_id:  +d['#place_id'],
+		distance:  +d.distance,
+		country:    d.country,
+	})),
+	d3.tsv("../data/countries.tsv", d => ({
+		alpha:     d['#alpha2'],
+		country:   d.country,
+		continent: d.continent,
+	})),
+]).then(function(data) {
+    // transform into objects and set keys
+	let missions  = data[0];
+	let users     = Object.fromEntries(data[1].map(u => [u.user_id, u]));
+	let places    = Object.fromEntries(data[2].map(p => [p.place_id, p]));
+	let countries = Object.fromEntries(data[3].map(c => [c.alpha, c]));
+	
+	// emissions per house
+    let houses = Object.fromEntries(data[1].map(u => [u.house, 0]));
+    for(let mission of missions) {
+        houses[users[mission.user_id].house] += mission.co2 * places[mission.place_id].distance / 1000;
+    }
+    
+    // transformation into d3 data structure 
+    let houseData = new Array();
+    for (let i = 0; i < Object.keys(houses).length; i++) {
+        houseData.push({houseName :  Object.keys(houses)[i], houseEmissions :  Object.values(houses)[i]});
+    }
+
+    // sort descending order
+    houseData.sort(function(a,b) {
+        return b.houseEmissions - a.houseEmissions;
+    });
+
+    // set the axis then draw svg
+	x.domain(houseData.map(function(d) { return d.houseName; }));
+    y.domain([0, d3.max(houseData, function(d) { return d.houseEmissions; })]);
+    let xAxis = d3.axisBottom(x);
+    let yAxis = d3.axisLeft(y);
+    
+    svg.append("g")
+      .attr("class", "x axis")
+      .attr("transform", "translate(0," + height + ")")
+      .call(xAxis)
+    .selectAll("text")
+      .style("text-anchor", "end")
+      .attr("dx", "-.8em")
+      .attr("dy", "-.55em")
+      .attr("transform", "rotate(-90)" );
+
+    svg.append("text")
+        .attr("class", "x label")
+        .attr("text-anchor", "end")
+        .attr("x", width / 2)
+        .attr("y", height + 100)
+        .text("Houses");
+
+    svg.append("g")
+        .attr("class", "y axis")
+        .call(yAxis)
+        .append("text")
+        .attr("transform", "rotate(-90)")
+        .attr("y", 6)
+        .attr("dy", "-3.0em")
+        .attr("dx", "-12.0em")
+        .style("text-anchor", "end")
+        .text("C02 Emissions").style("fill", "black").style("font-size", "13px");
+    
+    var toggleColor = (function(){
+        var currentColor = "steelblue";
+        return function(){
+            currentColor = currentColor == "steelblue" ? "magenta" : "steelblue";
+            d3.select(this).style("fill", currentColor);
+        }
+    })();
+
+    svg.selectAll(".bar")
+        .data(houseData)
+        .enter().append("rect")
+        .style("fill", "steelblue").on("click", toggleColor)
+        .attr("x", function(d) { return x(d.houseName); })
+        .attr("width", x.bandwidth())
+        .attr("y", function(d) { return y(d.houseEmissions); })
+        .attr("height", function(d) { return height - y(d.houseEmissions); })
+        .append("svg:title")
+        .text(function(d) { return d.houseName + " : " + parseFloat(d.houseEmissions).toFixed(3); }); //tooltip
+    
+});
+		</script>
+	</body>
+</html>
